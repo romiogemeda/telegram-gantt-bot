@@ -1,0 +1,98 @@
+// Entity ownership (from Phase 3 Logical Design):
+//   ProjectLifecycle module → Project, Member
+//   TaskManagement module   → Task, TaskDependency, Todo
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── ProjectLifecycle Module ──────────────────────────
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Project {
+  id                String        @id @default(uuid()) @db.Uuid
+  name              String
+  creatorTelegramId BigInt        @map("creator_telegram_id")
+  groupChatId       BigInt?       @map("group_chat_id")
+  settings          Json          @default("{\"notificationsEnabled\": true}")
+  status            ProjectStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  members Member[]
+  tasks   Task[]
+
+  @@map("projects")
+}
+
+model Member {
+  id               String  @id @default(uuid()) @db.Uuid
+  projectId        String  @map("project_id") @db.Uuid
+  displayName      String  @map("display_name")
+  telegramUsername  String? @map("telegram_username")
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedTasks Task[]
+
+  @@map("members")
+}
+
+// ─── TaskManagement Module ────────────────────────────
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model Task {
+  id         String     @id @default(uuid()) @db.Uuid
+  projectId  String     @map("project_id") @db.Uuid
+  title      String
+  assigneeId String?    @map("assignee_id") @db.Uuid
+  startDate  DateTime   @map("start_date") @db.Date
+  endDate    DateTime   @map("end_date") @db.Date
+  status     TaskStatus @default(TODO)
+  sortOrder  Int        @default(0) @map("sort_order")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee   Member?          @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  todos      Todo[]
+  dependsOn  TaskDependency[] @relation("dependent")
+  dependedBy TaskDependency[] @relation("dependency")
+
+  @@map("tasks")
+}
+
+model TaskDependency {
+  taskId          String @map("task_id") @db.Uuid
+  dependsOnTaskId String @map("depends_on_task_id") @db.Uuid
+
+  task      Task @relation("dependent", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn Task @relation("dependency", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+model Todo {
+  id          String  @id @default(uuid()) @db.Uuid
+  taskId      String  @map("task_id") @db.Uuid
+  title       String
+  isCompleted Boolean @default(false) @map("is_completed")
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("todos")
+}

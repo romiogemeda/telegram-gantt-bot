@@ -1,0 +1,15 @@
+node_modules/
+dist/
+webapp/dist/
+.env
+prisma/.env
+*.log
+*_output.txt
+*_error.txt
+.prisma/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

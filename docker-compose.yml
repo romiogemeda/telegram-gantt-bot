@@ -1,0 +1,27 @@
+# ============================================================================
+# Docker Compose – Local Development
+# ============================================================================
+# Provides a PostgreSQL 17 instance for local development.
+# The app itself runs outside Docker via `npm run dev` (faster iteration).
+# ============================================================================
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: gantt-bot-db
+    environment:
+      POSTGRES_USER: gantt
+      POSTGRES_PASSWORD: gantt_dev_password
+      POSTGRES_DB: gantt_bot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gantt -d gantt_bot"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

@@ -1,0 +1,648 @@
+/* ===========================================================================
+   Telegram Gantt Mini App – Stylesheet
+   ===========================================================================
+   Uses Telegram WebApp CSS variables for native theme integration.
+   Falls back to a clean light theme for browser dev.
+   =========================================================================== */
+
+/* ── CSS Variables ────────────────────────────────────────────────────────── */
+
+:root {
+  /* Telegram theme passthrough with sensible fallbacks */
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --bg2: var(--tg-theme-secondary-bg-color, #f2f2f7);
+  --text: var(--tg-theme-text-color, #1c1c1e);
+  --hint: var(--tg-theme-hint-color, #8e8e93);
+  --link: var(--tg-theme-link-color, #007aff);
+  --accent: var(--tg-theme-accent-text-color, #007aff);
+  --btn: var(--tg-theme-button-color, #007aff);
+  --btn-text: var(--tg-theme-button-text-color, #ffffff);
+  --section-bg: var(--tg-theme-section-bg-color, #ffffff);
+  --section-header: var(--tg-theme-section-header-text-color, #8e8e93);
+  --subtitle: var(--tg-theme-subtitle-text-color, #8e8e93);
+  --destructive: var(--tg-theme-destructive-text-color, #ff3b30);
+  --header-bg: var(--tg-theme-header-bg-color, #f8f8f8);
+
+  /* Status colors */
+  --status-todo-bg: color-mix(in srgb, var(--hint) 15%, transparent);
+  --status-todo-fg: var(--hint);
+  --status-wip-bg: color-mix(in srgb, var(--link) 15%, transparent);
+  --status-wip-fg: var(--link);
+  --status-done-bg: color-mix(in srgb, #34c759 15%, transparent);
+  --status-done-fg: #34c759;
+
+  /* Gantt bar colors */
+  --bar-todo: color-mix(in srgb, var(--hint) 18%, transparent);
+  --bar-todo-border: var(--hint);
+  --bar-wip: color-mix(in srgb, var(--link) 18%, transparent);
+  --bar-wip-border: var(--link);
+  --bar-done: color-mix(in srgb, #34c759 18%, transparent);
+  --bar-done-border: #34c759;
+
+  /* Misc */
+  --dep-line: var(--hint);
+  --gridline: color-mix(in srgb, var(--hint) 12%, transparent);
+  --gridline-strong: color-mix(in srgb, var(--hint) 25%, transparent);
+  --today-line: #ff3b30;
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+/* ── App Layout ───────────────────────────────────────────────────────────── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Loading & Error ──────────────────────────────────────────────────────── */
+
+.loading-screen,
+.error-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--gridline);
+  border-top-color: var(--btn);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-screen {
+  color: var(--destructive);
+}
+
+/* ── Project Header ───────────────────────────────────────────────────────── */
+
+.project-header {
+  padding: 16px 16px 12px;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.project-header-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.project-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-pct {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--status-done-fg);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.project-progress-track {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg2);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.project-progress-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+.project-progress-seg.done { background: #34c759; }
+.project-progress-seg.wip { background: var(--link); }
+.project-progress-seg.todo { background: transparent; }
+
+.project-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--hint);
+}
+
+.project-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.project-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.project-legend-dot.done { background: #34c759; }
+.project-legend-dot.wip { background: var(--link); }
+.project-legend-dot.todo { background: var(--hint); opacity: 0.4; }
+
+/* ── Gantt Container ──────────────────────────────────────────────────────── */
+
+.gantt-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  border-top: 1px solid var(--gridline-strong);
+}
+
+/* ── Gantt Left Labels ────────────────────────────────────────────────────── */
+
+.gantt-labels {
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg);
+  border-right: 1px solid var(--gridline-strong);
+  z-index: 2;
+  scrollbar-width: none;
+}
+.gantt-labels::-webkit-scrollbar { display: none; }
+
+.gantt-label-header {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--gridline);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.gantt-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid var(--gridline);
+}
+.gantt-label-row:active,
+.gantt-label-row.selected {
+  background: var(--bg2);
+}
+
+.gantt-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--link) 15%, transparent);
+  color: var(--link);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.gantt-label-text {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.gantt-label-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-label-assignee {
+  font-size: 11px;
+  color: var(--hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Gantt Scrollable Timeline ────────────────────────────────────────────── */
+
+.gantt-scroll {
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.gantt-timeline {
+  position: relative;
+}
+
+/* ── Date Header ──────────────────────────────────────────────────────────── */
+
+.gantt-date-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  border-bottom: 1px solid var(--gridline);
+}
+
+.gantt-date-col {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: 6px;
+}
+
+.gantt-date-col.today {
+  background: color-mix(in srgb, var(--today-line) 6%, transparent);
+}
+
+.gantt-month-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  padding-left: 4px;
+  white-space: nowrap;
+}
+
+.gantt-week-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--hint);
+  padding-left: 4px;
+}
+
+/* ── Grid Lines ───────────────────────────────────────────────────────────── */
+
+.gantt-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.gantt-gridline {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  background: var(--gridline);
+}
+.gantt-gridline.week { background: var(--gridline-strong); }
+.gantt-gridline.month { background: var(--gridline-strong); }
+
+/* ── Today Line ───────────────────────────────────────────────────────────── */
+
+.gantt-today-line {
+  position: absolute;
+  width: 2px;
+  background: var(--today-line);
+  z-index: 1;
+  opacity: 0.7;
+}
+
+.gantt-today-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--today-line);
+  border-radius: 50%;
+  position: absolute;
+  top: -4px;
+  left: -3px;
+}
+
+/* ── Task Bars ────────────────────────────────────────────────────────────── */
+
+.gantt-bar {
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  z-index: 1;
+}
+
+.gantt-bar:active {
+  transform: scale(0.97);
+}
+
+.gantt-bar.selected {
+  box-shadow: 0 0 0 2px var(--btn);
+  z-index: 2;
+}
+
+.gantt-bar.updating {
+  animation: bar-pulse 1s ease-in-out infinite;
+}
+
+@keyframes bar-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.gantt-bar-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  transition: width 0.3s ease;
+}
+
+.gantt-bar-label {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+/* ── Dependency SVG ───────────────────────────────────────────────────────── */
+
+.gantt-deps {
+  overflow: visible;
+}
+
+/* ── Bottom Sheet ─────────────────────────────────────────────────────────── */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 10;
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--section-bg, var(--bg));
+  border-radius: 14px 14px 0 0;
+  z-index: 11;
+  padding: 8px 16px 32px;
+  animation: slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--hint);
+  opacity: 0.3;
+  margin: 4px auto 14px;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sheet-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.sheet-assignee {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--subtitle, var(--hint));
+}
+
+.sheet-assignee-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--link) 15%, transparent);
+  color: var(--link);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Meta row */
+.sheet-meta {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.sheet-meta-item {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--bg2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sheet-meta-item:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.sheet-meta-item:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+
+.sheet-meta-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--hint);
+}
+
+.sheet-meta-value {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sections */
+.sheet-section {
+  margin-bottom: 16px;
+}
+
+.sheet-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--section-header, var(--hint));
+  margin-bottom: 8px;
+}
+
+.sheet-section-progress-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg2);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.sheet-section-progress-fill {
+  height: 100%;
+  background: #34c759;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Todos */
+.sheet-todos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sheet-todo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg2);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  transition: opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sheet-todo:active { opacity: 0.7; }
+.sheet-todo.busy { opacity: 0.5; pointer-events: none; }
+
+.sheet-todo-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--hint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  color: transparent;
+}
+
+.sheet-todo.completed .sheet-todo-check {
+  background: #34c759;
+  border-color: #34c759;
+  color: #fff;
+}
+
+.sheet-todo.completed .sheet-todo-text {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.sheet-todo-text {
+  font-size: 14px;
+}
+
+/* Action button */
+.sheet-action-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--btn);
+  color: var(--btn-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sheet-action-btn:active { transform: scale(0.98); }
+.sheet-action-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+.sheet-action-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+
+.sheet-done-message {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--status-done-fg);
+  padding: 14px;
+  background: var(--status-done-bg);
+  border-radius: var(--radius);
+}
