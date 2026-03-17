@@ -61,6 +61,37 @@ export async function webAppGatewayPlugin(
   // ── Routes ────────────────────────────────────────────────────────────
 
   /**
+   * GET /api/webapp/projects
+   *
+   * List all projects for the authenticated user (creator).
+   */
+  fastify.get("/projects", async (request, reply) => {
+    const user = (request as FastifyRequest & { telegramUser: ValidatedInitData }).telegramUser;
+    fastify.log.info({ userId: user.userId }, "Listing user projects");
+
+    const projects = await projectLifecycle.getProjectsByCreator(BigInt(user.userId));
+    return reply.send({ projects });
+  });
+
+  /**
+   * POST /api/webapp/projects
+   *
+   * Create a new empty project (FR-1.12).
+   */
+  fastify.post<{ Body: { name: string } }>("/projects", async (request, reply) => {
+    const user = (request as FastifyRequest & { telegramUser: ValidatedInitData }).telegramUser;
+    const { name } = request.body;
+    fastify.log.info({ userId: user.userId, name }, "Creating new empty project");
+
+    const result = await projectLifecycle.createEmptyProject(name, BigInt(user.userId));
+    if (!result.ok) {
+      return reply.status(400).send({ error: result.error });
+    }
+
+    return reply.status(201).send({ ok: true, project: result.data });
+  });
+
+  /**
    * GET /api/webapp/projects/:projectId
    *
    * Returns the full project data for the Gantt chart view (FR-3.1).
@@ -156,5 +187,157 @@ export async function webAppGatewayPlugin(
       fastify.log.info({ todoId, isCompleted: result.data.isCompleted }, "Todo toggled successfully");
       return reply.send({ ok: true, todo: result.data });
     },
+  );
+
+  // ── Task Management Routes ───────────────────────────────────────────
+
+  /**
+   * POST /api/webapp/projects/:projectId/tasks
+   * Create a single task (FR-3.6).
+   */
+  fastify.post<{
+    Params: { projectId: string };
+    Body: { title: string; assigneeId: string | null; startDate: string; endDate: string; dependsOnTaskIds?: string[] };
+  }>("/projects/:projectId/tasks", async (request, reply) => {
+    const { projectId } = request.params;
+    const result = await taskManagement.createSingleTask(projectId, request.body);
+
+    if (!result.ok) {
+      const statusCode = result.code === "NOT_FOUND" ? 404 : 400;
+      return reply.status(statusCode).send({ error: result.error });
+    }
+
+    return reply.status(201).send({ ok: true, task: result.data });
+  });
+
+  /**
+   * PUT /api/webapp/tasks/:taskId
+   * Update a task's full data (FR-3.7).
+   */
+  fastify.put<{
+    Params: { taskId: string };
+    Body: { title?: string; assigneeId?: string | null; startDate?: string; endDate?: string; dependsOnTaskIds?: string[] };
+  }>("/tasks/:taskId", async (request, reply) => {
+    const { taskId } = request.params;
+    const result = await taskManagement.updateTask(taskId, request.body);
+
+    if (!result.ok) {
+      const statusCode = result.code === "NOT_FOUND" ? 404 : 400;
+      return reply.status(statusCode).send({ error: result.error });
+    }
+
+    return reply.send({ ok: true, task: result.data });
+  });
+
+  /**
+   * DELETE /api/webapp/tasks/:taskId
+   * Delete a task (FR-3.8).
+   */
+  fastify.delete<{ Params: { taskId: string } }>(
+    "/tasks/:taskId",
+    async (request, reply) => {
+      const { taskId } = request.params;
+      const result = await taskManagement.deleteTask(taskId);
+
+      if (!result.ok) {
+        return reply.status(404).send({ error: result.error });
+      }
+
+      return reply.send({ ok: true, id: result.data.id });
+    }
+  );
+
+  /**
+   * POST /api/webapp/tasks/:taskId/todos
+   * Add a todo item (FR-3.9).
+   */
+  fastify.post<{
+    Params: { taskId: string };
+    Body: { title: string };
+  }>("/tasks/:taskId/todos", async (request, reply) => {
+    const { taskId } = request.params;
+    const result = await taskManagement.addTodoToTask(taskId, request.body.title);
+
+    if (!result.ok) {
+      return reply.status(404).send({ error: result.error });
+    }
+
+    return reply.status(201).send({ ok: true, todo: result.data });
+  });
+
+  /**
+   * DELETE /api/webapp/todos/:todoId
+   * Remove a todo item (FR-3.10).
+   */
+  fastify.delete<{ Params: { todoId: string } }>(
+    "/todos/:todoId",
+    async (request, reply) => {
+      const { todoId } = request.params;
+      const result = await taskManagement.removeTodo(todoId);
+
+      if (!result.ok) {
+        return reply.status(404).send({ error: result.error });
+      }
+
+      return reply.send({ ok: true, id: result.data.id });
+    }
+  );
+
+  // ── Member Management Routes ─────────────────────────────────────────
+
+  /**
+   * POST /api/webapp/projects/:projectId/members
+   * Add a member to a project (FR-1.9).
+   */
+  fastify.post<{
+    Params: { projectId: string };
+    Body: { displayName: string; telegramUsername?: string };
+  }>("/projects/:projectId/members", async (request, reply) => {
+    const { projectId } = request.params;
+    const result = await projectLifecycle.addMember(projectId, request.body);
+
+    if (!result.ok) {
+      const statusCode = result.code === "CONFLICT" ? 409 : 404;
+      return reply.status(statusCode).send({ error: result.error });
+    }
+
+    return reply.status(201).send({ ok: true, member: result.data });
+  });
+
+  /**
+   * PATCH /api/webapp/members/:memberId
+   * Update a member's details (FR-1.10).
+   */
+  fastify.patch<{
+    Params: { memberId: string };
+    Body: { displayName?: string; telegramUsername?: string | null };
+  }>("/members/:memberId", async (request, reply) => {
+    const { memberId } = request.params;
+    const result = await projectLifecycle.updateMember(memberId, request.body);
+
+    if (!result.ok) {
+      const statusCode = result.code === "CONFLICT" ? 409 : 404;
+      return reply.status(statusCode).send({ error: result.error });
+    }
+
+    return reply.send({ ok: true, member: result.data });
+  });
+
+  /**
+   * DELETE /api/webapp/members/:memberId
+   * Remove a member (FR-1.11).
+   */
+  fastify.delete<{ Params: { memberId: string } }>(
+    "/members/:memberId",
+    async (request, reply) => {
+      const { memberId } = request.params;
+      const result = await projectLifecycle.removeMember(memberId);
+
+      if (!result.ok) {
+        return reply.status(404).send({ error: result.error });
+      }
+
+      return reply.send({ ok: true, id: result.data.id });
+    }
   );
 }

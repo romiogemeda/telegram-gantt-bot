@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ProjectData, Task, TaskStatus } from "../types/project.js";
-import { fetchProject, updateTaskStatus, toggleTodo } from "../lib/api.js";
+import type {
+  ProjectData,
+  Task,
+  TaskStatus,
+  CreateTaskInput,
+  UpdateTaskInput,
+  CreateMemberInput,
+  UpdateMemberInput,
+} from "../types/project.js";
+import * as api from "../lib/api.js";
 import { haptic } from "../lib/telegram.js";
 
 // ============================================================================
@@ -18,6 +26,20 @@ interface UseProjectReturn {
   advanceTask: (taskId: string, newStatus: TaskStatus) => Promise<void>;
   /** Toggle a todo's completion state. */
   toggleTodoItem: (taskId: string, todoId: string) => Promise<void>;
+  /** Create a new task. */
+  createTask: (input: CreateTaskInput) => Promise<void>;
+  /** Update a task's fields. */
+  updateTask: (taskId: string, input: UpdateTaskInput) => Promise<void>;
+  /** Delete a task. */
+  deleteTask: (taskId: string) => Promise<void>;
+  /** Add a new member. */
+  addMember: (input: CreateMemberInput) => Promise<void>;
+  /** Remove a member. */
+  removeMember: (memberId: string) => Promise<void>;
+  /** Add a todo item to a task. */
+  addTodoToTask: (taskId: string, title: string) => Promise<void>;
+  /** Remove a todo item from a task. */
+  removeTodo: (taskId: string, todoId: string) => Promise<void>;
   /** Currently updating task IDs (for loading indicators). */
   updatingTasks: Set<string>;
   /** Currently updating todo IDs. */
@@ -40,7 +62,7 @@ export function useProject(projectId: string | null): UseProjectReturn {
     }
 
     let cancelled = false;
-    fetchProject(projectId)
+    api.fetchProject(projectId)
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -76,7 +98,7 @@ export function useProject(projectId: string | null): UseProjectReturn {
       setUpdatingTasks((s) => new Set(s).add(taskId));
 
       try {
-        await updateTaskStatus(taskId, data.project.id, newStatus);
+        await api.updateTaskStatus(taskId, data.project.id, newStatus);
         haptic("success");
       } catch (err) {
         // Rollback
@@ -123,7 +145,7 @@ export function useProject(projectId: string | null): UseProjectReturn {
       setUpdatingTodos((s) => new Set(s).add(todoId));
 
       try {
-        await toggleTodo(todoId);
+        await api.toggleTodo(todoId);
         haptic("light");
       } catch {
         // Rollback
@@ -140,5 +162,316 @@ export function useProject(projectId: string | null): UseProjectReturn {
     [data],
   );
 
-  return { data, loading, error, advanceTask, toggleTodoItem, updatingTasks, updatingTodos };
+  // ── Create Task ─────────────────────────────────────────────────────
+  const createTask = useCallback(
+    async (input: CreateTaskInput) => {
+      if (!data) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const tempTask: Task = {
+        id: tempId,
+        projectId: data.project.id,
+        title: input.title,
+        status: "TODO",
+        startDate: input.startDate,
+        endDate: input.endDate,
+        assigneeId: input.assigneeId,
+        sortOrder: data.tasks.length,
+        todos: input.todos ? input.todos.map((todo, i) => ({
+          id: `temp-todo-${Date.now()}-${i}`,
+          title: todo.title,
+          isCompleted: false,
+          sortOrder: i
+        })) : [],
+        dependsOn: input.dependsOnTaskIds?.map((id) => ({ dependsOnTaskId: id })) || [],
+      };
+
+      const prevTasks = data.tasks;
+      setData((d) => (d ? { ...d, tasks: [...d.tasks, tempTask] } : d));
+
+      try {
+        const result = await api.createTask(data.project.id, input);
+        setData((d) =>
+          d
+            ? {
+                ...d,
+                tasks: d.tasks.map((t) => (t.id === tempId ? result.task : t)),
+              }
+            : d,
+        );
+        haptic("success");
+      } catch (err) {
+        setData((d) => (d ? { ...d, tasks: prevTasks } : d));
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  // ── Update Task ─────────────────────────────────────────────────────
+  const updateTask = useCallback(
+    async (taskId: string, input: UpdateTaskInput) => {
+      if (!data) return;
+
+      const prevTasks = data.tasks;
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              tasks: d.tasks.map((t) =>
+                t.id === taskId
+                  ? {
+                      ...t,
+                      ...input,
+                      todos: input.todos
+                        ? input.todos.map((todo) => ({
+                            id: todo.id || `temp-${Math.random()}`,
+                            title: todo.title,
+                            isCompleted: false,
+                            sortOrder: 0,
+                          }))
+                        : t.todos,
+                      dependsOn: input.dependsOnTaskIds
+                        ? input.dependsOnTaskIds.map((id) => ({ dependsOnTaskId: id }))
+                        : t.dependsOn,
+                    }
+                  : t,
+              ),
+            }
+          : d,
+      );
+
+      try {
+        await api.updateTask(taskId, input);
+        haptic("success");
+      } catch (err) {
+        setData((d) => (d ? { ...d, tasks: prevTasks } : d));
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  // ── Delete Task ─────────────────────────────────────────────────────
+  const deleteTask = useCallback(
+    async (taskId: string) => {
+      if (!data) return;
+
+      const prevTasks = data.tasks;
+      setData((d) =>
+        d ? { ...d, tasks: d.tasks.filter((t) => t.id !== taskId) } : d,
+      );
+
+      try {
+        await api.deleteTask(taskId);
+        haptic("success");
+      } catch (err) {
+        setData((d) => (d ? { ...d, tasks: prevTasks } : d));
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  // ── Add Member ──────────────────────────────────────────────────────
+  const addMember = useCallback(
+    async (input: CreateMemberInput) => {
+      if (!data) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const tempMember = {
+        id: tempId,
+        displayName: input.displayName,
+        telegramUsername: input.telegramUsername || null,
+      };
+
+      const prevMembers = data.project.members;
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              project: {
+                ...d.project,
+                members: [...d.project.members, tempMember],
+              },
+            }
+          : d,
+      );
+
+      try {
+        const result = await api.addMember(data.project.id, input);
+        setData((d) =>
+          d
+            ? {
+                ...d,
+                project: {
+                  ...d.project,
+                  members: d.project.members.map((m) =>
+                    m.id === tempId ? result.member : m,
+                  ),
+                },
+              }
+            : d,
+        );
+        haptic("success");
+      } catch (err) {
+        setData((d) =>
+          d
+            ? { ...d, project: { ...d.project, members: prevMembers } }
+            : d,
+        );
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  // ── Remove Member ───────────────────────────────────────────────────
+  const removeMember = useCallback(
+    async (memberId: string) => {
+      if (!data) return;
+
+      const prevMembers = data.project.members;
+      const prevTasks = data.tasks;
+
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              project: {
+                ...d.project,
+                members: d.project.members.filter((m) => m.id !== memberId),
+              },
+              tasks: d.tasks.map((t) =>
+                t.assigneeId === memberId ? { ...t, assigneeId: null } : t,
+              ),
+            }
+          : d,
+      );
+
+      try {
+        await api.removeMember(memberId);
+        haptic("success");
+      } catch (err) {
+        setData((d) =>
+          d
+            ? {
+                ...d,
+                project: { ...d.project, members: prevMembers },
+                tasks: prevTasks,
+              }
+            : d,
+        );
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  // ── Add Todo ────────────────────────────────────────────────────────
+  const addTodoToTask = useCallback(
+    async (taskId: string, title: string) => {
+      if (!data) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const tempTodo = {
+        id: tempId,
+        title,
+        isCompleted: false,
+        sortOrder: 0,
+      };
+
+      const prevTasks = data.tasks;
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              tasks: d.tasks.map((t) =>
+                t.id === taskId ? { ...t, todos: [...t.todos, tempTodo] } : t,
+              ),
+            }
+          : d,
+      );
+
+      try {
+        const result = await api.addTodoToTask(taskId, title);
+        setData((d) =>
+          d
+            ? {
+                ...d,
+                tasks: d.tasks.map((t) =>
+                  t.id === taskId
+                    ? {
+                        ...t,
+                        todos: t.todos.map((todo) =>
+                          todo.id === tempId ? result.todo : todo,
+                        ),
+                      }
+                    : t,
+                ),
+              }
+            : d,
+        );
+        haptic("light");
+      } catch (err) {
+        setData((d) => (d ? { ...d, tasks: prevTasks } : d));
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  // ── Remove Todo ─────────────────────────────────────────────────────
+  const removeTodo = useCallback(
+    async (taskId: string, todoId: string) => {
+      if (!data) return;
+
+      const prevTasks = data.tasks;
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              tasks: d.tasks.map((t) =>
+                t.id === taskId
+                  ? { ...t, todos: t.todos.filter((todo) => todo.id !== todoId) }
+                  : t,
+              ),
+            }
+          : d,
+      );
+
+      try {
+        await api.removeTodo(todoId);
+        haptic("light");
+      } catch (err) {
+        setData((d) => (d ? { ...d, tasks: prevTasks } : d));
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  return {
+    data,
+    loading,
+    error,
+    advanceTask,
+    toggleTodoItem,
+    createTask,
+    updateTask,
+    deleteTask,
+    addMember,
+    removeMember,
+    addTodoToTask,
+    removeTodo,
+    updatingTasks,
+    updatingTodos,
+  };
 }

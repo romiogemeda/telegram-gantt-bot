@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect, Fragment } from "react";
+import { useRef, useMemo, useEffect, useState, Fragment } from "react";
 import type { Task, Member, TaskStatus } from "../types/project.js";
 import {
   parseDate,
@@ -37,7 +37,17 @@ interface GanttChartProps {
   members: Member[];
   selectedTaskId: string | null;
   onSelectTask: (taskId: string) => void;
+  onTaskDateChange: (taskId: string, newStartDate: string, newEndDate: string) => Promise<void>;
   updatingTasks: Set<string>;
+}
+
+interface DragState {
+  taskId: string;
+  type: "move" | "resize";
+  startX: number;
+  currentDeltaX: number;
+  originalLeft: number;
+  originalWidth: number;
 }
 
 const BAR_COLORS: Record<TaskStatus, { bg: string; border: string }> = {
@@ -51,9 +61,119 @@ export function GanttChart({
   members,
   selectedTaskId,
   onSelectTask,
+  onTaskDateChange,
   updatingTasks,
 }: GanttChartProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+
+  // ── Drag Handlers ─────────────────────────────────────────────────
+
+  const getX = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
+    if ("touches" in e) return e.touches[0]?.clientX ?? 0;
+    return (e as MouseEvent).clientX;
+  };
+
+  const handleDragStart = (
+    e: React.MouseEvent | React.TouchEvent,
+    task: Task,
+    type: "move" | "resize",
+    left: number,
+    width: number
+  ) => {
+    e.stopPropagation();
+    const x = getX(e);
+    setDragState({
+      taskId: task.id,
+      type,
+      startX: x,
+      currentDeltaX: 0,
+      originalLeft: left,
+      originalWidth: width,
+    });
+  };
+
+  // ── Compute timeline bounds ───────────────────────────────────────
+  const { timelineStart, dates, totalDays } = useMemo(() => {
+    if (tasks.length === 0) {
+      const now = new Date();
+      return { timelineStart: now, dates: [now], totalDays: 1 };
+    }
+
+    let earliest = Infinity;
+    let latest = -Infinity;
+    for (const t of tasks) {
+      const s = parseDate(t.startDate).getTime();
+      const e = parseDate(t.endDate).getTime();
+      if (s < earliest) earliest = s;
+      if (e > latest) latest = e;
+    }
+
+    const start = new Date(earliest);
+    start.setUTCDate(start.getUTCDate() - PADDING_DAYS);
+    const end = new Date(latest);
+    end.setUTCDate(end.getUTCDate() + PADDING_DAYS);
+
+    const dates = generateDateRange(start, end);
+    return { timelineStart: start, dates, totalDays: dates.length };
+  }, [tasks]);
+
+  useEffect(() => {
+    if (!dragState) return;
+
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      const delta = getX(e) - dragState.startX;
+      // Snap both types to day boundaries
+      const snappedDelta = Math.round(delta / DAY_WIDTH) * DAY_WIDTH;
+      setDragState((prev) => (prev ? { ...prev, currentDeltaX: snappedDelta } : null));
+    };
+
+    const handleEnd = async () => {
+      if (!dragState) return;
+      const { taskId, type, currentDeltaX, originalLeft, originalWidth } = dragState;
+      const task = tasks.find((t) => t.id === taskId);
+      setDragState(null);
+
+      if (!task || currentDeltaX === 0) return;
+
+      let newStartOffset: number;
+      let newEndOffset: number;
+
+      if (type === "move") {
+        newStartOffset = Math.round((originalLeft + currentDeltaX) / DAY_WIDTH);
+        const duration = daysBetween(parseDate(task.startDate), parseDate(task.endDate));
+        newEndOffset = newStartOffset + duration - 1;
+      } else {
+        // Resize
+        newStartOffset = Math.round(originalLeft / DAY_WIDTH);
+        const newWidth = Math.max(DAY_WIDTH, originalWidth + currentDeltaX);
+        newEndOffset = newStartOffset + Math.round(newWidth / DAY_WIDTH) - 1;
+      }
+
+      const newStart = new Date(timelineStart);
+      newStart.setUTCDate(newStart.getUTCDate() + newStartOffset);
+      const newEnd = new Date(timelineStart);
+      newEnd.setUTCDate(newEnd.getUTCDate() + newEndOffset);
+
+      await onTaskDateChange(
+        taskId,
+        newStart.toISOString().slice(0, 10),
+        newEnd.toISOString().slice(0, 10)
+      );
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleEnd);
+    window.addEventListener("touchmove", handleMove, { passive: false });
+    window.addEventListener("touchend", handleEnd);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleEnd);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleEnd);
+    };
+  }, [dragState, tasks, timelineStart, onTaskDateChange]);
 
   // ── Group tasks by member (one row per member) ────────────────────
   const rows = useMemo(() => {
@@ -81,30 +201,6 @@ export function GanttChart({
     return result;
   }, [tasks, members]);
 
-  // ── Compute timeline bounds ───────────────────────────────────────
-  const { timelineStart, dates, totalDays } = useMemo(() => {
-    if (tasks.length === 0) {
-      const now = new Date();
-      return { timelineStart: now, dates: [now], totalDays: 1 };
-    }
-
-    let earliest = Infinity;
-    let latest = -Infinity;
-    for (const t of tasks) {
-      const s = parseDate(t.startDate).getTime();
-      const e = parseDate(t.endDate).getTime();
-      if (s < earliest) earliest = s;
-      if (e > latest) latest = e;
-    }
-
-    const start = new Date(earliest);
-    start.setUTCDate(start.getUTCDate() - PADDING_DAYS);
-    const end = new Date(latest);
-    end.setUTCDate(end.getUTCDate() + PADDING_DAYS);
-
-    const dates = generateDateRange(start, end);
-    return { timelineStart: start, dates, totalDays: dates.length };
-  }, [tasks]);
 
   // ── Auto-scroll to today on mount ─────────────────────────────────
   useEffect(() => {
@@ -159,7 +255,11 @@ export function GanttChart({
       </div>
 
       {/* ── Right panel: scrollable timeline ────────────────────────── */}
-      <div className="gantt-scroll" ref={scrollRef}>
+      <div 
+        className="gantt-scroll" 
+        ref={scrollRef}
+        style={dragState ? { touchAction: "none", userSelect: "none" } : {}}
+      >
         <div className="gantt-timeline" style={{ width: timelineWidth, minHeight: HEADER_HEIGHT + rows.length * ROW_HEIGHT }}>
           {/* Date header */}
           <div className="gantt-date-header" style={{ height: HEADER_HEIGHT }}>
@@ -224,8 +324,12 @@ export function GanttChart({
                 const startOffset = daysFromRef(timelineStart, startDate);
                 const duration = daysBetween(startDate, endDate);
                 
-                const left = startOffset * DAY_WIDTH;
-                const width = duration * DAY_WIDTH;
+                const isDragging = dragState?.taskId === task.id;
+                const dragLeftOffset = isDragging && dragState.type === "move" ? dragState.currentDeltaX : 0;
+                const dragWidthOffset = isDragging && dragState.type === "resize" ? dragState.currentDeltaX : 0;
+
+                const left = startOffset * DAY_WIDTH + dragLeftOffset;
+                const width = Math.max(DAY_WIDTH, duration * DAY_WIDTH + dragWidthOffset);
                 const top = HEADER_HEIGHT + rowIndex * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2;
                 
                 const isSelected = task.id === selectedTaskId;
@@ -246,17 +350,25 @@ export function GanttChart({
                 return (
                   <div
                     key={task.id}
-                    className={`gantt-bar ${isSelected ? "selected" : ""} ${isUpdating ? "updating" : ""}`}
+                    className={`gantt-bar ${isSelected ? "selected" : ""} ${isUpdating ? "updating" : ""} ${isDragging ? "dragging" : ""}`}
                     style={{
                       position: "absolute",
                       left,
                       top,
-                      width: Math.max(width, DAY_WIDTH),
+                      width,
                       height: BAR_HEIGHT,
                       background: colors.bg,
                       borderLeft: `3px solid ${colors.border}`,
                     }}
-                    onClick={() => onSelectTask(task.id)}
+                    onMouseDown={(e) => handleDragStart(e, task, "move", startOffset * DAY_WIDTH, duration * DAY_WIDTH)}
+                    onTouchStart={(e) => handleDragStart(e, task, "move", startOffset * DAY_WIDTH, duration * DAY_WIDTH)}
+                    onClick={(e) => {
+                      if (isDragging && dragState.currentDeltaX !== 0) {
+                        e.stopPropagation();
+                        return;
+                      }
+                      onSelectTask(task.id);
+                    }}
                   >
                     <div
                       className="gantt-bar-progress"
@@ -267,6 +379,17 @@ export function GanttChart({
                       }}
                     />
                     <span className="gantt-bar-label">{task.title}</span>
+
+                    {/* Resize handle (FR-3.8) */}
+                    {isSelected && (
+                      <div 
+                        className="gantt-bar-resize-handle"
+                        onMouseDown={(e) => handleDragStart(e, task, "resize", startOffset * DAY_WIDTH, duration * DAY_WIDTH)}
+                        onTouchStart={(e) => handleDragStart(e, task, "resize", startOffset * DAY_WIDTH, duration * DAY_WIDTH)}
+                      >
+                        <div className="gantt-bar-resize-indicator" />
+                      </div>
+                    )}
                   </div>
                 );
               })}

@@ -20,6 +20,7 @@ interface TaskDetailSheetProps {
   onClose: () => void;
   onAdvanceStatus: (taskId: string, newStatus: TaskStatus) => Promise<void>;
   onToggleTodo: (taskId: string, todoId: string) => Promise<void>;
+  onEdit: () => void;
   isUpdating: boolean;
   updatingTodos: Set<string>;
 }
@@ -35,6 +36,7 @@ export function TaskDetailSheet({
   onClose,
   onAdvanceStatus,
   onToggleTodo,
+  onEdit,
   isUpdating,
   updatingTodos,
 }: TaskDetailSheetProps) {
@@ -63,7 +65,26 @@ export function TaskDetailSheet({
         {/* Header */}
         <div className="sheet-header">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 className="sheet-title">{task.title}</h2>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+              <h2 className="sheet-title">{task.title}</h2>
+              <button
+                type="button"
+                className="sheet-edit-btn"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--link)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  marginRight: -8
+                }}
+                onClick={onEdit}
+              >
+                Edit
+              </button>
+            </div>
             {assignee && (
               <div className="sheet-assignee">
                 <span className="sheet-assignee-avatar">

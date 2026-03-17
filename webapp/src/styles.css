@@ -7,6 +7,7 @@
 
 /* ── CSS Variables ────────────────────────────────────────────────────────── */
 
+/* Gantt Chart Styles */
 :root {
   /* Telegram theme passthrough with sensible fallbacks */
   --bg: var(--tg-theme-bg-color, #ffffff);
@@ -407,6 +408,35 @@ body {
   color: var(--text);
 }
 
+.gantt-bar.dragging {
+  opacity: 0.85;
+  cursor: grabbing;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.gantt-bar-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gantt-bar-resize-indicator {
+  width: 3px;
+  height: 14px;
+  border-radius: 1.5px;
+  background: var(--hint);
+  opacity: 0.4;
+}
+
 /* ── Dependency SVG ───────────────────────────────────────────────────────── */
 
 .gantt-deps {
@@ -645,4 +675,601 @@ body {
   padding: 14px;
   background: var(--status-done-bg);
   border-radius: var(--radius);
+}
+
+/* ── Floating Action Button ───────────────────────────────────────────────── */
+
+.fab-add {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--btn);
+  color: var(--btn-text);
+  border: none;
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  z-index: 5;
+  transition: transform 0.1s, opacity 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fab-add:active {
+  transform: scale(0.92);
+  opacity: 0.9;
+}
+
+/* ── Form Elements ────────────────────────────────────────────────────────── */
+
+.sheet-field {
+  margin-bottom: 20px;
+}
+
+.sheet-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint);
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+
+.sheet-input,
+.sheet-select {
+  width: 100%;
+  height: 48px;
+  padding: 10px 14px;
+  background: var(--bg2);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px; /* Native font size to prevent iOS zoom */
+  appearance: none;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.sheet-input:focus,
+.sheet-select:focus {
+  border-color: var(--btn);
+}
+
+.sheet-input.error,
+.sheet-select.error {
+  border-color: var(--destructive);
+}
+
+.sheet-field-error {
+  display: block;
+  font-size: 12px;
+  color: var(--destructive);
+  margin-top: 6px;
+  padding-left: 2px;
+}
+
+.sheet-dep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg2);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+}
+
+.sheet-dep-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sheet-dep-item:active {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.sheet-dep-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--hint);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.sheet-dep-item.selected .sheet-dep-checkbox {
+  background: var(--btn);
+  border-color: var(--btn);
+}
+
+.sheet-dep-checkbox-mark {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sheet-dep-info {
+  min-width: 0;
+}
+
+.sheet-dep-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-delete-btn {
+  width: 100%;
+  padding: 14px;
+  background: transparent;
+  color: var(--destructive);
+  border: 1px solid var(--destructive);
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 12px;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sheet-delete-btn:active {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+
+/* ── Member Management ────────────────────────────────────────────────────── */
+
+.member-stack {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.member-stack .gantt-avatar {
+  margin-left: -8px;
+  border: 2px solid var(--bg);
+  width: 28px;
+  height: 28px;
+  position: relative;
+  box-sizing: content-box;
+}
+
+.member-stack .gantt-avatar:first-child {
+  margin-left: 0;
+}
+
+.member-stack-more {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg2);
+  color: var(--hint);
+  border: 2px solid var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: -8px;
+  box-sizing: content-box;
+}
+
+.member-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.member-add-input {
+  flex: 1;
+}
+
+.member-add-username {
+  width: 110px;
+}
+
+.member-add-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--btn);
+  color: var(--btn-text);
+  border: none;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.member-add-btn:active {
+  transform: scale(0.92);
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--gridline);
+}
+
+.member-row:last-child {
+  border-bottom: none;
+}
+
+.member-row.removing {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.member-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.member-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.member-row-username {
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.member-row-remove {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.member-row-confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.member-row-confirm-yes {
+  color: var(--destructive);
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.member-row-confirm-no {
+  color: var(--hint);
+  font-weight: 600;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+/* ── Checklist ───────────────────────────────────────────────────────────── */
+
+.sheet-checklist {
+  margin-bottom: 16px;
+}
+
+.sheet-checklist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.sheet-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg2);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.sheet-checklist-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sheet-checklist-item-remove {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sheet-checklist-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sheet-checklist-empty {
+  font-size: 13px;
+  color: var(--hint);
+  padding: 8px 0;
+}
+
+/* ── Home Screen ──────────────────────────────────────────────────────────── */
+
+.home-screen {
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.home-header {
+  margin-bottom: 20px;
+}
+
+.home-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.home-subtitle {
+  font-size: 13px;
+  color: var(--hint);
+  margin-top: 2px;
+}
+
+.project-card {
+  background: var(--section-bg, var(--bg));
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--gridline);
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.project-card:active {
+  background: var(--bg2);
+}
+
+.project-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.project-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.home-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--hint);
+}
+
+.home-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.home-bottom {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0;
+  background: var(--bg);
+  margin-top: auto;
+}
+
+/* ── Back Button ─────────────────────────────────────────────────────────── */
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--link);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.back-btn:active {
+  opacity: 0.7;
+}
+
+/* ── Member Avatar Stack (HomeScreen version) ────────────────────────────── */
+.project-card .member-stack {
+  display: flex;
+  margin-right: -4px;
+}
+
+.project-card .member-avatar {
+  border: 1.5px solid var(--section-bg, var(--bg));
+}
+
+/* ── Onboarding View ──────────────────────────────────────────────────────── */
+
+.onboarding {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+}
+
+.onboarding-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.onboarding-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.onboarding-subtitle {
+  font-size: 14px;
+  color: var(--hint);
+  max-width: 260px;
+  line-height: 1.5;
+}
+
+.onboarding-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 8px;
+}
+
+.onboarding-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg2);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  border: none;
+  font: inherit;
+  color: var(--text);
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  width: 100%;
+}
+
+.onboarding-card:active {
+  background: var(--gridline-strong);
+}
+
+.onboarding-card.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.onboarding-card.done {
+  opacity: 0.6;
+}
+
+.onboarding-card-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.onboarding-card-text {
+  flex: 1;
+}
+
+.onboarding-card-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.onboarding-card-subtitle {
+  font-size: 12px;
+  color: var(--hint);
+  margin-top: 2px;
+}
+
+.onboarding-card-check {
+  color: #34c759;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Inline Create Form ───────────────────────────────────────────────────── */
+
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.create-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.create-form-cancel {
+  background: none;
+  border: none;
+  color: var(--hint);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
 }

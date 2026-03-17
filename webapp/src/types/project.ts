@@ -56,3 +56,31 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
   IN_PROGRESS: "In Progress",
   DONE: "Done",
 };
+
+export interface CreateTaskInput {
+  title: string;
+  assigneeId: string | null;
+  startDate: string;
+  endDate: string;
+  dependsOnTaskIds?: string[];
+  todos?: { title: string }[];
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  assigneeId?: string | null;
+  startDate?: string;
+  endDate?: string;
+  dependsOnTaskIds?: string[];
+  todos?: { id?: string; title: string }[];
+}
+
+export interface CreateMemberInput {
+  displayName: string;
+  telegramUsername?: string;
+}
+
+export interface UpdateMemberInput {
+  displayName?: string;
+  telegramUsername?: string | null;
+}

@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import type { FastifyInstance } from "fastify";
 import type { ProjectLifecycleService } from "../../modules/project-lifecycle/index.js";
 import type { TaskManagementService } from "../../modules/task-management/index.js";
@@ -21,31 +21,59 @@ export interface BotGatewayDeps {
   projectLifecycle: ProjectLifecycleService;
   taskManagement: TaskManagementService;
   publishing: PublishingService;
+  webAppUrl: string;
 }
 
 export async function botGatewayPlugin(
   fastify: FastifyInstance,
-  { bot, projectLifecycle, taskManagement, publishing }: BotGatewayDeps,
+  { bot, projectLifecycle, taskManagement, publishing, webAppUrl }: BotGatewayDeps,
 ): Promise<void> {
   // ── Commands ──────────────────────────────────────────────────────────
 
   /**
-   * /start, /help — Output usage instructions (FR-1.0).
+   * /start — Output usage instructions (FR-1.0).
    */
-  bot.command(["start", "help"], async (ctx: BotContext) => {
+  bot.command("start", async (ctx: BotContext) => {
+    const keyboard = new InlineKeyboard()
+      .webApp("📊 Open Dashboard", webAppUrl)
+      .text("➕ New Project", "action:newproject")
+      .row()
+      .text("📋 Get JSON Template", "action:jsontemplate");
+
     await ctx.reply(
       [
-        "🤖 <b>Gantt Bot — Project Management for Telegram</b>",
+        "🤖 <b>Gantt Bot</b> — Project management inside Telegram.",
         "",
-        "<b>Commands:</b>",
-        "/newproject — Start a new project (private chat)",
-        "/jsontemplate — Get the JSON template for project data",
-        "/showgantt — Repost the Gantt chart button (group chat)",
-        "/help — Show this help message",
+        "Create projects, assign tasks, and track progress with interactive Gantt charts — all without leaving Telegram.",
         "",
-        "Start by sending /newproject in a private chat with me!",
+        "Tap a button below to get started, or type /help for all commands.",
       ].join("\n"),
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", reply_markup: keyboard },
+    );
+  });
+
+  /**
+   * /help — Output command reference.
+   */
+  bot.command("help", async (ctx: BotContext) => {
+    const keyboard = new InlineKeyboard()
+      .webApp("📊 Open Dashboard", webAppUrl)
+      .text("➕ New Project", "action:newproject");
+
+    await ctx.reply(
+      [
+        "📖 <b>Commands</b>",
+        "",
+        "/start — Welcome message",
+        "/newproject — Create a project step by step (private chat)",
+        "/jsontemplate — Get the JSON template for bulk import",
+        "/dashboard — Open the visual dashboard",
+        "/showgantt — Repost the Gantt chart button (group chats)",
+        "/help — Show this message",
+        "",
+        "<b>Quick start:</b> Open the Dashboard to create and manage projects visually, or use /newproject for a guided setup.",
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: keyboard },
     );
   });
 
@@ -100,6 +128,35 @@ export async function botGatewayPlugin(
     await publishing.repostSummary(projectResult.data, tasks, groupChatId);
   });
 
+  /**
+   * /dashboard — Open the visual dashboard.
+   */
+  bot.command("dashboard", async (ctx: BotContext) => {
+    const keyboard = new InlineKeyboard().webApp("📊 Open Dashboard", webAppUrl);
+    await ctx.reply("Tap below to open your project dashboard.", {
+      reply_markup: keyboard,
+    });
+  });
+
+  // ── Callback Query Handlers ───────────────────────────────────────────
+
+  bot.callbackQuery("action:newproject", async (ctx: BotContext) => {
+    await ctx.answerCallbackQuery();
+    if (ctx.chat?.type !== "private") {
+      await ctx.answerCallbackQuery({ text: "Use this in a private chat with me." });
+      return;
+    }
+    await ctx.conversation.enter(CREATE_PROJECT_ID);
+  });
+
+  bot.callbackQuery("action:jsontemplate", async (ctx: BotContext) => {
+    await ctx.answerCallbackQuery();
+    const template = getJsonTemplate();
+    await ctx.reply(`Here's the project JSON template:\n\n<pre>${template}</pre>`, {
+      parse_mode: "HTML",
+    });
+  });
+
   // ── Shared: validate JSON and create project ───────────────────────────
 
   /**
@@ -129,15 +186,20 @@ export async function botGatewayPlugin(
       return;
     }
 
+    const keyboard = new InlineKeyboard()
+      .webApp("📊 Open in Dashboard", webAppUrl)
+      .row()
+      .webApp("📊 Open Project", `${webAppUrl}?projectId=${result.data.id}`);
+
     await ctx.reply(
       [
-        `✅ <b>Project "${result.data.name}" created!</b>`,
+        `🎉 <b>Project "${result.data.name}" created!</b>`,
         ``,
-        `Members: ${result.data.members.map((m) => m.displayName).join(", ")}`,
+        `${result.data.members.length} members added.`,
         ``,
-        `I've sent a <b>preview</b> below. Now add me to a group and use /showgantt to publish the chart.`,
+        `Open the project to start adding tasks, or add me to a group and use /showgantt to share the Gantt chart.`,
       ].join("\n"),
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", reply_markup: keyboard },
     );
 
     // Send the preview button (FR-1.7)

@@ -1,102 +1,86 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getTelegram } from "./lib/telegram.js";
-import { useProject } from "./hooks/useProject.js";
-import { ProjectHeader } from "./components/ProjectHeader.js";
-import { GanttChart } from "./components/GanttChart.js";
-import { TaskDetailSheet } from "./components/TaskDetailSheet.js";
+import { HomeScreen } from "./components/HomeScreen.js";
+import { ProjectView } from "./components/ProjectView.js";
+import { createProject } from "./lib/api.js";
 import "./styles.css";
 
 // ============================================================================
 // App – Root Component
 // ============================================================================
-// Orchestrates the Mini App lifecycle:
+// Orchestrates the multi-screen navigation:
 //   1. Init Telegram WebApp SDK
-//   2. Extract projectId from URL
-//   3. Fetch project data via useProject hook
-//   4. Render ProjectHeader + GanttChart
-//   5. Show TaskDetailSheet on task selection
+//   2. Determine initial screen (Home vs Project via URL)
+//   3. Manage screen state and active project
 // ============================================================================
 
-export function App() {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+type Screen = "home" | "project";
 
-  // ── Init Telegram SDK ───────────────────────────────────────────────
+export function App() {
+  const [screen, setScreen] = useState<Screen>("home");
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [navigatedFromHome, setNavigatedFromHome] = useState(false);
+
+  // ── Init Telegram SDK & Routing ─────────────────────────────────────
   useEffect(() => {
     const tg = getTelegram();
     if (tg) {
       tg.ready();
       tg.expand();
     }
-  }, []);
 
-  // ── Extract project ID from URL ─────────────────────────────────────
-  const projectId = useMemo(() => {
+    // Check for projectId in URL for direct/bot links
     const params = new URLSearchParams(window.location.search);
-    return params.get("projectId");
+    const projectId = params.get("projectId");
+    if (projectId) {
+      setScreen("project");
+      setActiveProjectId(projectId);
+      setNavigatedFromHome(false);
+    }
   }, []);
 
-  // ── Data lifecycle ──────────────────────────────────────────────────
-  const {
-    data,
-    loading,
-    error,
-    advanceTask,
-    toggleTodoItem,
-    updatingTasks,
-    updatingTodos,
-  } = useProject(projectId);
+  // ── Navigation Handlers ─────────────────────────────────────────────
 
-  // ── Selected task object ────────────────────────────────────────────
-  const selectedTask = useMemo(
-    () => (data ? data.tasks.find((t) => t.id === selectedTaskId) ?? null : null),
-    [data, selectedTaskId],
-  );
+  const handleOpenProject = (projectId: string) => {
+    setActiveProjectId(projectId);
+    setScreen("project");
+    setNavigatedFromHome(true);
+  };
+
+  const handleBackToHome = () => {
+    setScreen("home");
+    setActiveProjectId(null);
+    setNavigatedFromHome(false);
+  };
+
+  const handleCreateSubmit = async (name: string) => {
+    const result = await createProject(name);
+    if (result.ok) {
+      setActiveProjectId(result.project.id);
+      setScreen("project");
+      setNavigatedFromHome(true);
+    }
+  };
 
   // ── Render ──────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (screen === "home") {
     return (
-      <div className="loading-screen">
-        <div className="loading-spinner" />
-        <span style={{ color: "var(--hint)", fontSize: 13 }}>Loading project…</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="error-screen">
-        <span style={{ fontSize: 28 }}>⚠️</span>
-        <span>{error}</span>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
-  return (
-    <div className="app">
-      <ProjectHeader projectName={data.project.name} tasks={data.tasks} />
-
-      <GanttChart
-        tasks={data.tasks}
-        members={data.project.members}
-        selectedTaskId={selectedTaskId}
-        onSelectTask={(id) => setSelectedTaskId(id)}
-        updatingTasks={updatingTasks}
+      <HomeScreen 
+        onOpenProject={handleOpenProject} 
+        onSubmitCreate={handleCreateSubmit}
       />
+    );
+  }
 
-      {selectedTask && (
-        <TaskDetailSheet
-          task={selectedTask}
-          members={data.project.members}
-          onClose={() => setSelectedTaskId(null)}
-          onAdvanceStatus={advanceTask}
-          onToggleTodo={toggleTodoItem}
-          isUpdating={updatingTasks.has(selectedTask.id)}
-          updatingTodos={updatingTodos}
-        />
-      )}
-    </div>
-  );
+  if (screen === "project" && activeProjectId) {
+    return (
+      <ProjectView 
+        projectId={activeProjectId} 
+        onBack={navigatedFromHome ? handleBackToHome : undefined}
+      />
+    );
+  }
+
+  return null;
 }

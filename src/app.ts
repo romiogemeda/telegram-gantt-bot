@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   bot.use(conversations());
 
   // Register the guided project creation conversation (FR-1.2)
-  const projectConversationFn = createProjectConversation(projectLifecycle, taskManagement, publishing);
+  const projectConversationFn = createProjectConversation(projectLifecycle, taskManagement, publishing, env.WEBAPP_URL);
   bot.use(createConversation(projectConversationFn, CREATE_PROJECT_ID));
 
   // ── 4. Fastify Server ───────────────────────────────────────────────
@@ -97,6 +97,7 @@ async function main(): Promise<void> {
     projectLifecycle,
     taskManagement,
     publishing,
+    webAppUrl: env.WEBAPP_URL,
   });
 
   // WebApp Gateway: /api/webapp/*

@@ -18,6 +18,56 @@ export class ProjectLifecycleService {
   constructor(private readonly prisma: PrismaClient) {}
 
   /**
+   * List all active projects created by a specific user.
+   */
+  async getProjectsByCreator(creatorTelegramId: bigint): Promise<(Project & { members: Member[]; _count: { tasks: number } })[]> {
+    return this.prisma.project.findMany({
+      where: {
+        creatorTelegramId,
+        status: "ACTIVE",
+      },
+      include: {
+        members: true,
+        _count: {
+          select: { tasks: true },
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+  }
+
+  /**
+   * Create a new empty project (no members, no tasks) with default settings (FR-1.12).
+   */
+  async createEmptyProject(
+    name: string,
+    creatorTelegramId: bigint,
+  ): Promise<DomainResult<Project & { members: Member[] }>> {
+    if (!name || name.trim().length === 0) {
+      return { ok: false, error: "Project name is required", code: "VALIDATION_ERROR" };
+    }
+
+    try {
+      const project = await this.prisma.project.create({
+        data: {
+          name,
+          creatorTelegramId,
+          settings: { notificationsEnabled: true },
+        },
+        include: { members: true },
+      });
+
+      return { ok: true, data: project };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return { ok: false, error: `Failed to create empty project: ${message}`, code: "VALIDATION_ERROR" };
+    }
+  }
+
+
+  /**
    * Validate and parse a raw JSON payload into a ProjectInput.
    * Returns a DomainResult with structured Zod errors on failure (FR-1.5).
    */
@@ -158,5 +208,114 @@ export class ProjectLifecycleService {
       data: { status: "ARCHIVED" },
     });
     return { ok: true, data: updated };
+  }
+
+  /**
+   * Add a member to a project (FR-1.9).
+   */
+  async addMember(
+    projectId: string,
+    data: { displayName: string; telegramUsername?: string },
+  ): Promise<DomainResult<Member>> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project || project.status !== "ACTIVE") {
+      return { ok: false, error: "Project not found or inactive", code: "NOT_FOUND" };
+    }
+
+    const existing = await this.prisma.member.findFirst({
+      where: { projectId, displayName: data.displayName },
+    });
+
+    if (existing) {
+      return {
+        ok: false,
+        error: `Member with name "${data.displayName}" already exists in this project`,
+        code: "CONFLICT",
+      };
+    }
+
+    const member = await this.prisma.member.create({
+      data: {
+        projectId,
+        displayName: data.displayName,
+        telegramUsername: data.telegramUsername ?? null,
+      },
+    });
+
+    return { ok: true, data: member };
+  }
+
+  /**
+   * Update a member's details (FR-1.10).
+   */
+  async updateMember(
+    memberId: string,
+    data: { displayName?: string; telegramUsername?: string | null },
+  ): Promise<DomainResult<Member>> {
+    const member = await this.prisma.member.findUnique({
+      where: { id: memberId },
+    });
+
+    if (!member) {
+      return { ok: false, error: "Member not found", code: "NOT_FOUND" };
+    }
+
+    if (data.displayName && data.displayName !== member.displayName) {
+      const existing = await this.prisma.member.findFirst({
+        where: {
+          projectId: member.projectId,
+          displayName: data.displayName,
+          NOT: { id: memberId },
+        },
+      });
+
+      if (existing) {
+        return {
+          ok: false,
+          error: `Member with name "${data.displayName}" already exists in this project`,
+          code: "CONFLICT",
+        };
+      }
+    }
+
+    const updated = await this.prisma.member.update({
+      where: { id: memberId },
+      data: {
+        displayName: data.displayName,
+        telegramUsername: data.telegramUsername,
+      },
+    });
+
+    return { ok: true, data: updated };
+  }
+
+  /**
+   * Remove a member from a project (FR-1.11).
+   */
+  async removeMember(memberId: string): Promise<DomainResult<{ id: string }>> {
+    const member = await this.prisma.member.findUnique({
+      where: { id: memberId },
+    });
+
+    if (!member) {
+      return { ok: false, error: "Member not found", code: "NOT_FOUND" };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Unassign tasks before deletion (manual set-null even though schema has onDelete: SetNull)
+      await tx.task.updateMany({
+        where: { assigneeId: memberId },
+        data: { assigneeId: null },
+      });
+
+      await tx.member.delete({
+        where: { id: memberId },
+      });
+    });
+
+    return { ok: true, data: { id: memberId } };
   }
 }

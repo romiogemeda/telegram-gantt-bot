@@ -4,6 +4,7 @@ import type { ProjectLifecycleService } from "../../../modules/project-lifecycle
 import type { TaskManagementService } from "../../../modules/task-management/index.js";
 import type { MemberInput, TaskInput } from "../../../modules/project-lifecycle/index.js";
 import type { PublishingService } from "../../../modules/publishing/index.js";
+import { InlineKeyboard } from "grammy";
 
 // ============================================================================
 // Create Project Conversation (FR-1.1, FR-1.2, FR-1.6)
@@ -33,6 +34,7 @@ export function createProjectConversation(
   projectLifecycle: ProjectLifecycleService,
   taskManagement: TaskManagementService,
   publishing: PublishingService,
+  webAppUrl: string,
 ) {
   return async function (
     conversation: Conversation<BotContext, BotContext>,
@@ -396,17 +398,20 @@ export function createProjectConversation(
       return;
     }
 
+    const keyboard = new InlineKeyboard()
+      .webApp("📊 Open in Dashboard", webAppUrl)
+      .row()
+      .webApp("📊 Open Project", `${webAppUrl}?projectId=${result.data.id}`);
+
     await ctx.reply(
       [
         `🎉 <b>Project "${result.data.name}" created!</b>`,
         "",
         `${result.data.members.length} members, ${tasks.length} tasks.`,
         "",
-        "Next steps:",
-        "1. Add me to a group chat",
-        "2. Use /showgantt in the group to publish the Gantt chart",
+        `Open the project to view your Gantt chart, or add me to a group and use /showgantt to share it.`,
       ].join("\n"),
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", reply_markup: keyboard },
     );
 
     // Send the preview button (FR-1.7)
