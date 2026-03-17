@@ -6,6 +6,7 @@ import { GanttChart } from "./GanttChart.js";
 import { TaskDetailSheet } from "./TaskDetailSheet.js";
 import { TaskEditorSheet } from "./TaskEditorSheet.js";
 import { MemberManagerSheet } from "./MemberManagerSheet.js";
+import ProjectSettingsSheet from "./ProjectSettingsSheet.js";
 import type { Task } from "../types/project.js";
 
 interface ProjectViewProps {
@@ -21,6 +22,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showMemberManager, setShowMemberManager] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // ── Data lifecycle ──────────────────────────────────────────────────
   const {
@@ -36,6 +38,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
     removeMember,
     addTodoToTask,
     removeTodo,
+    renameProject,
+    toggleNotifications,
+    archiveProject,
     updatingTasks,
     updatingTodos,
   } = useProject(projectId);
@@ -103,6 +108,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         tasks={data.tasks}
         members={data.project.members}
         onManageMembers={() => setShowMemberManager(true)}
+        onOpenSettings={() => setShowSettings(true)}
       />
 
       {showOnboarding ? (
@@ -213,6 +219,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
           onAddMember={addMember}
           onRemoveMember={removeMember}
           onClose={() => setShowMemberManager(false)}
+        />
+      )}
+
+      {showSettings && (
+        <ProjectSettingsSheet
+          project={data.project}
+          onRename={renameProject}
+          onToggleNotifications={toggleNotifications}
+          onArchive={archiveProject}
+          onClose={() => setShowSettings(false)}
+          onArchiveComplete={() => {
+            if (onBack) onBack();
+            else setShowSettings(false);
+          }}
         />
       )}
     </div>

@@ -7,6 +7,8 @@ import type {
   UpdateTaskInput,
   CreateMemberInput,
   UpdateMemberInput,
+  UpdateProjectInput,
+  UpdateSettingsInput,
 } from "../types/project.js";
 import { getTelegram } from "./telegram.js";
 
@@ -219,6 +221,49 @@ export async function removeTodo(
 ): Promise<{ ok: boolean; id: string }> {
   const res = await fetch(`${API_BASE}/todos/${todoId}`, {
     method: "DELETE",
+    headers: getHeaders(),
+  });
+  return handleResponse(res);
+}
+
+/**
+ * Update project details (rename).
+ */
+export async function updateProject(
+  projectId: string,
+  data: UpdateProjectInput,
+): Promise<{ ok: boolean; project: any }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+    method: "PATCH",
+    headers: getHeaders(true),
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res);
+}
+
+/**
+ * Update project settings (notifications).
+ */
+export async function updateProjectSettings(
+  projectId: string,
+  data: UpdateSettingsInput,
+): Promise<{ ok: boolean; project: any }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/settings`, {
+    method: "PATCH",
+    headers: getHeaders(true),
+    body: JSON.stringify(data),
+  });
+  return handleResponse(res);
+}
+
+/**
+ * Archive/Delete a project.
+ */
+export async function archiveProject(
+  projectId: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/archive`, {
+    method: "POST",
     headers: getHeaders(),
   });
   return handleResponse(res);

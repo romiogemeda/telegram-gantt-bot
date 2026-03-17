@@ -84,3 +84,11 @@ export interface UpdateMemberInput {
   displayName?: string;
   telegramUsername?: string | null;
 }
+
+export interface UpdateProjectInput {
+  name?: string;
+}
+
+export interface UpdateSettingsInput {
+  notificationsEnabled?: boolean;
+}

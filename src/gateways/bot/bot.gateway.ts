@@ -69,6 +69,9 @@ export async function botGatewayPlugin(
         "/jsontemplate — Get the JSON template for bulk import",
         "/dashboard — Open the visual dashboard",
         "/showgantt — Repost the Gantt chart button (group chats)",
+        "/publish — Publish a project to the current group chat",
+        "/archive — Archive a project",
+        "/settings — Manage project settings",
         "/help — Show this message",
         "",
         "<b>Quick start:</b> Open the Dashboard to create and manage projects visually, or use /newproject for a guided setup.",
@@ -129,11 +132,144 @@ export async function botGatewayPlugin(
   });
 
   /**
+   * /publish — Associate a project with the current group chat (FR-2.1).
+   */
+  bot.command("publish", async (ctx: BotContext) => {
+    if (ctx.chat?.type === "private" || !ctx.chat) {
+      await ctx.reply("Use /publish in a group chat to share a project here.");
+      return;
+    }
+
+    const creatorId = BigInt(ctx.from!.id);
+    const unpublished = await projectLifecycle.getUnpublishedProjectsByCreator(creatorId);
+
+    if (unpublished.length === 0) {
+      await ctx.reply(
+        "You have no unpublished projects. Create one first with /newproject or from the Dashboard.",
+      );
+      return;
+    }
+
+    // If exactly ONE unpublished project, skip selection
+    if (unpublished.length === 1) {
+      const project = unpublished[0];
+      const projectId = project.id;
+      const groupChatId = BigInt(ctx.chat.id);
+
+      // Handle republishing logic (Step 4) - although if it's in 'unpublished' list (groupChatId is null), 
+      // this check might be redundant, BUT the user request says to execute steps 3-8, and step 4 is part of that.
+      // Wait, getUnpublishedProjectsByCreator returns projects where groupChatId is null.
+      // So if it's in 'unpublished', it by definition doesn't have a groupChatId.
+      // However, to be safe and follow instructions strictly:
+      if (project.groupChatId !== null) {
+        if (project.groupChatId === groupChatId) {
+          await ctx.reply("This project is already published here. Use /showgantt to repost the chart.");
+          return;
+        }
+
+        const keyboard = new InlineKeyboard()
+          .text("Yes, move it", `confirm_publish:${projectId}`)
+          .text("Cancel", "cancel_publish");
+
+        await ctx.reply(
+          "⚠️ This project is already published in another group. Publishing here will move it. Continue?",
+          { reply_markup: keyboard }
+        );
+        return;
+      }
+
+      const setGroupResult = await projectLifecycle.setGroupChatId(projectId, groupChatId);
+      if (!setGroupResult.ok) {
+        await ctx.reply(`❌ ${setGroupResult.error}`);
+        return;
+      }
+
+      const tasks = await taskManagement.getTasksByProject(projectId);
+      await publishing.publishToGroup(project, tasks);
+
+      await ctx.reply(
+        `✅ <b>"${project.name}"</b> has been published to this group!`,
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
+    // If MULTIPLE, show selection
+    const keyboard = new InlineKeyboard();
+    const sorted = unpublished.slice(0, 10);
+    for (const p of sorted) {
+      keyboard.text(p.name, `publish:${p.id}`).row();
+    }
+
+    let text = "Which project would you like to publish to this group?";
+    if (unpublished.length > 10) {
+      text += "\n\n<i>Showing your 10 most recent projects.</i>";
+    }
+
+    await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+  });
+
+  /**
    * /dashboard — Open the visual dashboard.
    */
   bot.command("dashboard", async (ctx: BotContext) => {
     const keyboard = new InlineKeyboard().webApp("📊 Open Dashboard", webAppUrl);
     await ctx.reply("Tap below to open your project dashboard.", {
+      reply_markup: keyboard,
+    });
+  });
+
+  /**
+   * /archive — Archive a project (private chat only).
+   */
+  bot.command("archive", async (ctx: BotContext) => {
+    if (ctx.chat?.type !== "private") {
+      await ctx.reply("Use /archive in a private chat with me.");
+      return;
+    }
+
+    const creatorId = BigInt(ctx.from!.id);
+    const projects = await projectLifecycle.getProjectsByCreator(creatorId);
+
+    if (projects.length === 0) {
+      await ctx.reply("You have no active projects.");
+      return;
+    }
+
+    const keyboard = new InlineKeyboard();
+    for (const p of projects.slice(0, 10)) {
+      keyboard.text(`${p.name} (${p._count.tasks} tasks)`, `archive:${p.id}`).row();
+    }
+
+    await ctx.reply(
+      "Which project would you like to archive? This will hide it from your dashboard and disable the Gantt chart.",
+      { reply_markup: keyboard }
+    );
+  });
+
+  /**
+   * /settings — Manage project settings (private chat only).
+   */
+  bot.command("settings", async (ctx: BotContext) => {
+    if (ctx.chat?.type !== "private") {
+      await ctx.reply("Use /settings in a private chat with me.");
+      return;
+    }
+
+    const creatorId = BigInt(ctx.from!.id);
+    const projects = await projectLifecycle.getProjectsByCreator(creatorId);
+
+    if (projects.length === 0) {
+      await ctx.reply("You have no active projects.");
+      return;
+    }
+
+    const keyboard = new InlineKeyboard();
+    for (const p of projects.slice(0, 10)) {
+      keyboard.text(p.name, `settings:${p.id}`).row();
+    }
+
+    await ctx.reply("Which project's settings would you like to manage?", {
       reply_markup: keyboard,
     });
   });
@@ -154,6 +290,202 @@ export async function botGatewayPlugin(
     const template = getJsonTemplate();
     await ctx.reply(`Here's the project JSON template:\n\n<pre>${template}</pre>`, {
       parse_mode: "HTML",
+    });
+  });
+
+  bot.callbackQuery(/^publish:(.+)$/, async (ctx: BotContext) => {
+    if (!ctx.match) return;
+    const projectId = ctx.match[1];
+    await ctx.answerCallbackQuery();
+
+    if (!ctx.chat || ctx.chat.type === "private") {
+      await ctx.reply("This command only works in group chats.");
+      return;
+    }
+
+    const groupChatId = BigInt(ctx.chat.id);
+    const projectResult = await projectLifecycle.getProject(projectId);
+
+    if (!projectResult.ok) {
+      await ctx.reply(`❌ ${projectResult.error}`);
+      return;
+    }
+
+    const project = projectResult.data;
+
+    // Handle republishing logic (Step 4)
+    if (project.groupChatId !== null) {
+      if (project.groupChatId === groupChatId) {
+        await ctx.reply("This project is already published here. Use /showgantt to repost the chart.");
+        return;
+      }
+
+      const keyboard = new InlineKeyboard()
+        .text("Yes, move it", `confirm_publish:${projectId}`)
+        .text("Cancel", "cancel_publish");
+
+      await ctx.editMessageText(
+        "⚠️ This project is already published in another group. Publishing here will move it. Continue?",
+        { reply_markup: keyboard }
+      );
+      return;
+    }
+
+    // Proceed with publishing
+    const setGroupResult = await projectLifecycle.setGroupChatId(projectId, groupChatId);
+    if (!setGroupResult.ok) {
+      await ctx.reply(`❌ ${setGroupResult.error}`);
+      return;
+    }
+
+    const tasks = await taskManagement.getTasksByProject(projectId);
+    await publishing.publishToGroup(project, tasks);
+
+    await ctx.editMessageText(
+      `✅ <b>"${project.name}"</b> has been published to this group!`,
+      { parse_mode: "HTML" }
+    );
+  });
+
+  bot.callbackQuery(/^confirm_publish:(.+)$/, async (ctx: BotContext) => {
+    if (!ctx.match) return;
+    const projectId = ctx.match[1];
+    await ctx.answerCallbackQuery();
+
+    if (!ctx.chat || ctx.chat.type === "private") return;
+    const groupChatId = BigInt(ctx.chat.id);
+
+    const projectResult = await projectLifecycle.getProject(projectId);
+    if (!projectResult.ok) {
+      await ctx.reply(`❌ ${projectResult.error}`);
+      return;
+    }
+
+    const setGroupResult = await projectLifecycle.setGroupChatId(projectId, groupChatId);
+    if (!setGroupResult.ok) {
+      await ctx.reply(`❌ ${setGroupResult.error}`);
+      return;
+    }
+
+    const tasks = await taskManagement.getTasksByProject(projectId);
+    await publishing.publishToGroup(projectResult.data, tasks);
+
+    await ctx.editMessageText(
+      `✅ <b>"${projectResult.data.name}"</b> has been published to this group!`,
+      { parse_mode: "HTML" }
+    );
+  });
+
+  bot.callbackQuery("cancel_publish", async (ctx: BotContext) => {
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText("Publishing cancelled.");
+  });
+
+  // ── Archive handlers ──────────────────────────────────────────────────
+
+  bot.callbackQuery(/^archive:(.+)$/, async (ctx: BotContext) => {
+    const projectId = ctx.match![1];
+    await ctx.answerCallbackQuery();
+
+    const keyboard = new InlineKeyboard()
+      .text("Yes, archive it", `confirm_archive:${projectId}`)
+      .text("Cancel", "cancel_archive");
+
+    await ctx.editMessageText(
+      "⚠️ Are you sure you want to archive this project? This will hide it from your dashboard and disable the Gantt chart in any group it's published to.",
+      { reply_markup: keyboard }
+    );
+  });
+
+  bot.callbackQuery(/^confirm_archive:(.+)$/, async (ctx: BotContext) => {
+    await ctx.answerCallbackQuery();
+    const projectId = ctx.match![1];
+    const requesterId = BigInt(ctx.from!.id);
+    const result = await projectLifecycle.archiveProject(projectId, requesterId);
+    if (!result.ok) {
+      await ctx.editMessageText(`❌ ${result.error}`);
+      return;
+    }
+    await ctx.editMessageText(`✅ Project archived successfully.`);
+  });
+
+  bot.callbackQuery("cancel_archive", async (ctx: BotContext) => {
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText("Archive cancelled. Your project is unchanged.");
+  });
+
+  // ── Settings handlers ─────────────────────────────────────────────────
+
+  async function renderSettingsPanel(ctx: BotContext, projectId: string): Promise<void> {
+    const projectResult = await projectLifecycle.getProject(projectId);
+    if (!projectResult.ok) {
+      await ctx.editMessageText(`❌ ${projectResult.error}`);
+      return;
+    }
+
+    const settings = projectLifecycle.getSettings(projectResult.data);
+
+    const text = [
+      `⚙️ <b>Settings: ${projectResult.data.name}</b>`,
+      ``,
+      `🔔 <b>Notifications:</b> ${settings.notificationsEnabled ? "On ✅" : "Off ❌"}`,
+      `<i>When enabled, the bot posts to the group chat when a task status changes.</i>`,
+    ].join("\n");
+
+    const keyboard = new InlineKeyboard();
+    if (settings.notificationsEnabled) {
+      keyboard.text("🔕 Turn Off Notifications", `notif_off:${projectId}`);
+    } else {
+      keyboard.text("🔔 Turn On Notifications", `notif_on:${projectId}`);
+    }
+    keyboard.row().text("← Back to projects", "settings_back");
+
+    await ctx.editMessageText(text, {
+      parse_mode: "HTML",
+      reply_markup: keyboard,
+    });
+  }
+
+  bot.callbackQuery(/^settings:(.+)$/, async (ctx: BotContext) => {
+    const projectId = ctx.match![1];
+    await ctx.answerCallbackQuery();
+    await renderSettingsPanel(ctx, projectId);
+  });
+
+  bot.callbackQuery(/^notif_(on|off):(.+)$/, async (ctx: BotContext) => {
+    await ctx.answerCallbackQuery();
+    const enable = ctx.match![1] === "on";
+    const projectId = ctx.match![2];
+
+    const result = await projectLifecycle.updateSettings(projectId, {
+      notificationsEnabled: enable,
+    });
+
+    if (!result.ok) {
+      await ctx.answerCallbackQuery({ text: `Error: ${result.error}` });
+      return;
+    }
+
+    await renderSettingsPanel(ctx, projectId);
+  });
+
+  bot.callbackQuery("settings_back", async (ctx: BotContext) => {
+    await ctx.answerCallbackQuery();
+    const creatorId = BigInt(ctx.from!.id);
+    const projects = await projectLifecycle.getProjectsByCreator(creatorId);
+
+    if (projects.length === 0) {
+      await ctx.editMessageText("You have no active projects.");
+      return;
+    }
+
+    const keyboard = new InlineKeyboard();
+    for (const p of projects.slice(0, 10)) {
+      keyboard.text(p.name, `settings:${p.id}`).row();
+    }
+
+    await ctx.editMessageText("Which project's settings would you like to manage?", {
+      reply_markup: keyboard,
     });
   });
 
@@ -197,7 +529,7 @@ export async function botGatewayPlugin(
         ``,
         `${result.data.members.length} members added.`,
         ``,
-        `Open the project to start adding tasks, or add me to a group and use /showgantt to share the Gantt chart.`,
+        `Open the project to view your Gantt chart, or add me to a group chat and use /publish to share the Gantt chart.`,
       ].join("\n"),
       { parse_mode: "HTML", reply_markup: keyboard },
     );

@@ -39,6 +39,41 @@ export class ProjectLifecycleService {
   }
 
   /**
+   * Return all ACTIVE projects where creatorTelegramId matches AND groupChatId is null.
+   */
+  async getUnpublishedProjectsByCreator(creatorTelegramId: bigint): Promise<(Project & { members: Member[] })[]> {
+    return this.prisma.project.findMany({
+      where: {
+        creatorTelegramId,
+        status: "ACTIVE",
+        groupChatId: null,
+      },
+      include: {
+        members: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+  }
+
+  /**
+   * Return all ACTIVE projects where creatorTelegramId matches AND groupChatId equals the given groupChatId.
+   */
+  async getProjectsByCreatorInGroup(creatorTelegramId: bigint, groupChatId: bigint): Promise<(Project & { members: Member[] })[]> {
+    return this.prisma.project.findMany({
+      where: {
+        creatorTelegramId,
+        status: "ACTIVE",
+        groupChatId,
+      },
+      include: {
+        members: true,
+      },
+    });
+  }
+
+  /**
    * Create a new empty project (no members, no tasks) with default settings (FR-1.12).
    */
   async createEmptyProject(
@@ -185,6 +220,51 @@ export class ProjectLifecycleService {
       ...raw,
       notificationsEnabled: raw?.notificationsEnabled !== false,
     };
+  }
+
+  /**
+   * Update a project's core details like name.
+   */
+  async updateProject(projectId: string, data: { name?: string }): Promise<DomainResult<Project>> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+    if (!project) {
+      return { ok: false, error: "Project not found", code: "NOT_FOUND" };
+    }
+    if (data.name !== undefined) {
+      if (data.name.trim().length === 0) {
+        return { ok: false, error: "Project name cannot be empty", code: "VALIDATION_ERROR" };
+      }
+    }
+    const updated = await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        name: data.name
+      },
+    });
+    return { ok: true, data: updated };
+  }
+
+  /**
+   * Update project settings.
+   */
+  async updateSettings(projectId: string, settings: Partial<ProjectSettings>): Promise<DomainResult<Project>> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+    if (!project) {
+      return { ok: false, error: "Project not found", code: "NOT_FOUND" };
+    }
+    const currentSettings = this.getSettings(project);
+    const mergedSettings = { ...currentSettings, ...settings };
+    const updated = await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        settings: mergedSettings as object,
+      },
+    });
+    return { ok: true, data: updated };
   }
 
   /**

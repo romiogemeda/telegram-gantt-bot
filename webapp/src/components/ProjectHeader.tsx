@@ -11,13 +11,15 @@ interface ProjectHeaderProps {
   tasks: Task[];
   members: Member[];
   onManageMembers: () => void;
+  onOpenSettings: () => void;
 }
 
 export function ProjectHeader({ 
   projectName, 
   tasks, 
   members, 
-  onManageMembers 
+  onManageMembers,
+  onOpenSettings
 }: ProjectHeaderProps) {
   const total = tasks.length;
   const counts: Record<TaskStatus, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
@@ -45,6 +47,7 @@ export function ProjectHeader({
         </div>
 
         <span className="project-pct">{pct}%</span>
+        <button className="settings-gear" onClick={onOpenSettings}>⚙️</button>
       </div>
 
       {/* Progress bar */}

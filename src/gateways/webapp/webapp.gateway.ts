@@ -124,6 +124,66 @@ export async function webAppGatewayPlugin(
   );
 
   /**
+   * PATCH /api/webapp/projects/:projectId
+   * Update project details (name).
+   */
+  fastify.patch<{
+    Params: { projectId: string };
+    Body: { name?: string };
+  }>("/projects/:projectId", async (request, reply) => {
+    const { projectId } = request.params;
+    const result = await projectLifecycle.updateProject(projectId, request.body);
+
+    if (!result.ok) {
+      const statusCode = result.code === "NOT_FOUND" ? 404 : 400;
+      return reply.status(statusCode).send({ error: result.error });
+    }
+
+    return reply.send({ ok: true, project: result.data });
+  });
+
+  /**
+   * PATCH /api/webapp/projects/:projectId/settings
+   * Update project settings (notifications).
+   */
+  fastify.patch<{
+    Params: { projectId: string };
+    Body: { notificationsEnabled?: boolean };
+  }>("/projects/:projectId/settings", async (request, reply) => {
+    const { projectId } = request.params;
+    const result = await projectLifecycle.updateSettings(projectId, request.body);
+
+    if (!result.ok) {
+      return reply.status(404).send({ error: result.error });
+    }
+
+    return reply.send({ ok: true, project: result.data });
+  });
+
+  /**
+   * POST /api/webapp/projects/:projectId/archive
+   * Archive/Delete a project.
+   */
+  fastify.post<{ Params: { projectId: string } }>(
+    "/projects/:projectId/archive",
+    async (request, reply) => {
+      const { projectId } = request.params;
+      const user = (request as FastifyRequest & { telegramUser: ValidatedInitData }).telegramUser;
+
+      const result = await projectLifecycle.archiveProject(projectId, BigInt(user.userId));
+
+      if (!result.ok) {
+        let statusCode = 400;
+        if (result.code === "NOT_FOUND") statusCode = 404;
+        if (result.code === "UNAUTHORIZED") statusCode = 403;
+        return reply.status(statusCode).send({ error: result.error });
+      }
+
+      return reply.send({ ok: true, project: result.data });
+    },
+  );
+
+  /**
    * PATCH /api/webapp/tasks/:taskId/status
    *
    * Update a task's status (FR-3.4). Triggers notification if enabled.

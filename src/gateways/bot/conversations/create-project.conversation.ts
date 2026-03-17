@@ -409,7 +409,7 @@ export function createProjectConversation(
         "",
         `${result.data.members.length} members, ${tasks.length} tasks.`,
         "",
-        `Open the project to view your Gantt chart, or add me to a group and use /showgantt to share it.`,
+        `Open the project to view your Gantt chart, or add me to a group chat and use /publish to share the Gantt chart.`,
       ].join("\n"),
       { parse_mode: "HTML", reply_markup: keyboard },
     );

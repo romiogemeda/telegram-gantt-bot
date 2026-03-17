@@ -40,6 +40,12 @@ interface UseProjectReturn {
   addTodoToTask: (taskId: string, title: string) => Promise<void>;
   /** Remove a todo item from a task. */
   removeTodo: (taskId: string, todoId: string) => Promise<void>;
+  /** Rename the project. */
+  renameProject: (name: string) => Promise<void>;
+  /** Toggle notifications for the project. */
+  toggleNotifications: () => Promise<void>;
+  /** Archive the project. Returns true on success. */
+  archiveProject: () => Promise<boolean>;
   /** Currently updating task IDs (for loading indicators). */
   updatingTasks: Set<string>;
   /** Currently updating todo IDs. */
@@ -458,6 +464,98 @@ export function useProject(projectId: string | null): UseProjectReturn {
     [data],
   );
 
+  // ── Rename Project ──────────────────────────────────────────────────
+  const renameProject = useCallback(
+    async (name: string) => {
+      if (!data) return;
+
+      const prevName = data.project.name;
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              project: { ...d.project, name },
+            }
+          : d,
+      );
+
+      try {
+        await api.updateProject(data.project.id, { name });
+        haptic("success");
+      } catch (err) {
+        setData((d) =>
+          d
+            ? { ...d, project: { ...d.project, name: prevName } }
+            : d,
+        );
+        haptic("error");
+        throw err;
+      }
+    },
+    [data],
+  );
+
+  // ── Toggle Notifications ────────────────────────────────────────────
+  const toggleNotifications = useCallback(async () => {
+    if (!data) return;
+
+    const prevEnabled = data.project.settings.notificationsEnabled;
+    const newValue = !prevEnabled;
+
+    setData((d) =>
+      d
+        ? {
+            ...d,
+            project: {
+              ...d.project,
+              settings: {
+                ...d.project.settings,
+                notificationsEnabled: newValue,
+              },
+            },
+          }
+        : d,
+    );
+
+    try {
+      await api.updateProjectSettings(data.project.id, {
+        notificationsEnabled: newValue,
+      });
+      haptic("light");
+    } catch (err) {
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              project: {
+                ...d.project,
+                settings: {
+                  ...d.project.settings,
+                  notificationsEnabled: prevEnabled,
+                },
+              },
+            }
+          : d,
+      );
+      haptic("error");
+      throw err;
+    }
+  }, [data]);
+
+  // ── Archive Project ─────────────────────────────────────────────────
+  const archiveProject = useCallback(async () => {
+    if (!data) return false;
+
+    try {
+      await api.archiveProject(data.project.id);
+      haptic("success");
+      return true;
+    } catch (err) {
+      haptic("error");
+      return false;
+    }
+  }, [data]);
+
   return {
     data,
     loading,
@@ -471,6 +569,9 @@ export function useProject(projectId: string | null): UseProjectReturn {
     removeMember,
     addTodoToTask,
     removeTodo,
+    renameProject,
+    toggleNotifications,
+    archiveProject,
     updatingTasks,
     updatingTodos,
   };
